@@ -154,3 +154,24 @@ USE_TZ = True
 # ========================
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ========================
+# AUTENTICACIÓN
+# ========================
+
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+
+# ========================
+# SESIONES
+# ========================
+
+# Duración: 8 horas
+SESSION_COOKIE_AGE = 60 * 60 * 8
+
+# No cerrar sesión al cerrar navegador
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# Nombre personalizado de la cookie
+SESSION_COOKIE_NAME = 'encomiendas_session'

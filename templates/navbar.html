@@ -1,33 +1,80 @@
-<nav class="navbar navbar-dark bg-dark">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
     <div class="container">
 
-        <span class="navbar-brand">Sistema Encomiendas</span>
+        <a class="navbar-brand" href="{% url 'dashboard' %}">
+            <i class="fas fa-shipping-fast me-2"></i>
+            Sistema Encomiendas
+        </a>
 
-        <ul class="navbar-nav flex-row gap-3">
+        {% if user.is_authenticated %}
 
-            <li class="nav-item">
-                <a class="nav-link text-white" href="{% url 'encomienda_lista' %}">
-                    Encomiendas
+            <button class="navbar-toggler"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#navbarContenido">
+                <span class="navbar-toggler-icon"></span>
+            </button>
 
-                    {% if nav_retraso > 0 %}
-                        <span class="badge bg-danger rounded-pill">
-                            {{ nav_retraso }}
-                        </span>
-                    {% endif %}
-                </a>
-            </li>
+            <div class="collapse navbar-collapse" id="navbarContenido">
 
-            <li class="nav-item">
-                <a class="nav-link text-white" href="{% url 'dashboard' %}">
-                    Dashboard
+                <ul class="navbar-nav me-auto">
 
-                    <span class="badge bg-secondary">
-                        {{ nav_activas }}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'dashboard' %}">
+                            Dashboard
+
+                            <span class="badge bg-secondary">
+                                {{ nav_activas }}
+                            </span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'encomienda_lista' %}">
+                            Encomiendas
+
+                            {% if nav_retraso > 0 %}
+                                <span class="badge bg-danger rounded-pill">
+                                    {{ nav_retraso }}
+                                </span>
+                            {% endif %}
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'encomienda_crear' %}">
+                            Nueva
+                        </a>
+                    </li>
+
+                </ul>
+
+                <div class="d-flex align-items-center">
+
+                    <span class="navbar-text me-3">
+                        <i class="fas fa-user me-1"></i>
+                        {{ user.username }}
                     </span>
-                </a>
-            </li>
 
-        </ul>
+                    <a href="{% url 'logout' %}"
+                       class="btn btn-outline-light btn-sm">
+                        <i class="fas fa-sign-out-alt me-1"></i>
+                        Salir
+                    </a>
+
+                </div>
+
+            </div>
+
+        {% else %}
+
+            <a href="{% url 'login' %}"
+               class="btn btn-outline-light">
+                <i class="fas fa-sign-in-alt me-1"></i>
+                Iniciar sesión
+            </a>
+
+        {% endif %}
 
     </div>
 </nav>
