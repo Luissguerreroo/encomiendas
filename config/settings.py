@@ -4,6 +4,7 @@ Django settings for config project.
 
 from pathlib import Path
 from decouple import config
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,10 +27,23 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # Apps del proyecto
     'envios',
     'clientes',
     'rutas',
+
+    # Django REST Framework y librerías API
+    'rest_framework',
+    'django_filters',
+    'drf_spectacular',
+    'corsheaders',
 ]
+
+# ─────────────────────────────
+# SILK (SOLO DESARROLLO)
+# ─────────────────────────────
+if DEBUG:
+    INSTALLED_APPS += ['silk']
 
 
 # ========================
@@ -37,7 +51,13 @@ INSTALLED_APPS = [
 # ========================
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
+
+    # SILK (SOLO DESARROLLO)
+    *(['silk.middleware.SilkyMiddleware'] if DEBUG else []),
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -56,10 +76,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-
-        # carpeta global templates/
         'DIRS': [BASE_DIR / 'templates'],
-
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -67,7 +84,6 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                # Nuestro context processor personalizado:
                 'envios.context_processors.estadisticas_globales',
             ],
         },
@@ -79,18 +95,14 @@ TEMPLATES = [
 # STATIC Y MEDIA
 # ========================
 
-# URL base para archivos estáticos
 STATIC_URL = 'static/'
 
-# Carpetas en desarrollo
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
-# Carpeta para producción
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Archivos subidos por usuarios
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -123,18 +135,10 @@ DATABASES = {
 # ========================
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 
@@ -155,6 +159,7 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+
 # ========================
 # AUTENTICACIÓN
 # ========================
@@ -163,15 +168,144 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
 
+
 # ========================
 # SESIONES
 # ========================
 
-# Duración: 8 horas
 SESSION_COOKIE_AGE = 60 * 60 * 8
-
-# No cerrar sesión al cerrar navegador
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
-
-# Nombre personalizado de la cookie
 SESSION_COOKIE_NAME = 'encomiendas_session'
+
+
+# ========================
+# DJANGO REST FRAMEWORK
+# ========================
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 15,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'ALLOWED_VERSIONS': ['v1', 'v2'],
+    'DEFAULT_VERSION': 'v1',
+    'VERSION_PARAM': 'version',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/hour',
+        'user': '500/hour',
+        'empleado': '100/min',
+        'cambio_estado': '30/hour',
+        'login_attempt': '5/min',
+    },
+    'EXCEPTION_HANDLER': 'api.exceptions.encomiendas_exception_handler',
+}
+
+
+# ========================
+# JWT
+# ========================
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+
+# ========================
+# CORS
+# ========================
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+CORS_ALLOWED_ORIGINS = [
+    'https://encomiendas-frontend.vercel.app',
+    'https://admin.encomiendas.pe',
+    'http://localhost:3000',
+    'http://localhost:5173',
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'authorization',
+    'content-type',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+
+# ========================
+# DRF SPECTACULAR
+# ========================
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API Sistema de Gestión de Encomiendas',
+    'DESCRIPTION': '''
+API REST para gestionar el ciclo de vida de encomiendas.
+Incluye registro de envíos, cambio de estado, historial y estadísticas del sistema.
+''',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SORT_OPERATIONS': False,
+    'TAGS': [
+        {'name': 'Encomiendas', 'description': 'Gestión de envíos'},
+        {'name': 'Clientes', 'description': 'Listado de clientes activos'},
+        {'name': 'Rutas', 'description': 'Rutas disponibles'},
+        {'name': 'Auth', 'description': 'Autenticación JWT'},
+    ],
+}
+
+
+# ========================
+# SILK PROFILER
+# ========================
+
+if DEBUG:
+    SILKY_PYTHON_PROFILER = True
+    SILKY_META = True
+    SILKY_INTERCEPT_PERCENT = 100
+
+
+# ========================
+# REDIS CACHE
+# ========================
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://redis:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
+CACHE_TTL = 60 * 15  # 15 minutos

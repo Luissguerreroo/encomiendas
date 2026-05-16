@@ -2,6 +2,10 @@ from django.db import models
 from django.utils import timezone
 
 
+# =========================
+# ENCOMIENDA QUERYSET
+# =========================
+
 class EncomiendaQuerySet(models.QuerySet):
 
     def pendientes(self):
@@ -36,7 +40,20 @@ class EncomiendaQuerySet(models.QuerySet):
             fecha_entrega_est__lt=timezone.now().date()
         )
 
+    # =========================
+    # OPTIMIZACIÓN N+1
+    # =========================
     def con_relaciones(self):
+        """
+        Optimiza consultas evitando N+1 queries.
+
+        select_related:
+            - relaciones FK (JOIN en una sola query)
+
+        prefetch_related:
+            - relaciones inversas o M2M (query adicional optimizada)
+        """
+
         return self.select_related(
             'remitente',
             'destinatario',
@@ -44,6 +61,10 @@ class EncomiendaQuerySet(models.QuerySet):
             'empleado_registro'
         )
 
+
+# =========================
+# CLIENTE QUERYSET
+# =========================
 
 class ClienteQuerySet(models.QuerySet):
 
@@ -63,6 +84,10 @@ class ClienteQuerySet(models.QuerySet):
             models.Q(nro_doc__icontains=termino)
         )
 
+
+# =========================
+# RUTA QUERYSET
+# =========================
 
 class RutaQuerySet(models.QuerySet):
 
