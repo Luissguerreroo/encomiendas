@@ -1,5 +1,8 @@
 from decimal import Decimal
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 from django.db import models
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
@@ -11,6 +14,7 @@ from rutas.models import Ruta
 
 from .validators import validar_peso_positivo, validar_codigo_encomienda
 from .querysets import EncomiendaQuerySet
+
 
 # ========================
 # EMPLEADO
@@ -149,12 +153,16 @@ class Encomienda(models.Model):
     def dias_en_transito(self):
         if not self.fecha_registro:
             return 0
-        return (timezone.now().date() - self.fecha_registro.date()).days
+
+        return (
+            timezone.now().date() - self.fecha_registro.date()
+        ).days
 
     @property
     def tiene_retraso(self):
         if not self.fecha_entrega_est or self.esta_entregada:
             return False
+
         return timezone.now().date() > self.fecha_entrega_est
 
     @property
@@ -181,6 +189,55 @@ class Encomienda(models.Model):
 
         return round(costo, 2)
 
+    def _notificar_cambio_estado(
+        self,
+        estado_anterior,
+        estado_nuevo,
+        empleado
+    ):
+        """
+        Envía notificaciones WebSocket cuando cambia el estado.
+        """
+
+        channel_layer = get_channel_layer()
+
+        mensaje = {
+            'encomienda_id': self.pk,
+            'codigo': self.codigo,
+            'estado_anterior': estado_anterior,
+            'estado_nuevo': estado_nuevo,
+            'empleado': str(empleado),
+            'timestamp': timezone.now().isoformat(),
+        }
+
+        # ── Notificar grupo global ─────────────────────
+        async_to_sync(channel_layer.group_send)(
+            'encomiendas_global',
+            {
+                'type': 'encomienda_estado_cambio',
+                **mensaje
+            }
+        )
+
+        # ── Actualizar dashboard ───────────────────────
+        stats = {
+            'activas': Encomienda.objects.activas().count(),
+            'en_transito': Encomienda.objects.en_transito().count(),
+            'con_retraso': Encomienda.objects.con_retraso().count(),
+            'entregadas_hoy': Encomienda.objects.filter(
+                estado=EstadoEnvio.ENTREGADO,
+                fecha_entrega_real=timezone.now().date()
+            ).count(),
+        }
+
+        async_to_sync(channel_layer.group_send)(
+            'dashboard',
+            {
+                'type': 'dashboard_actualizar',
+                'stats': stats,
+            }
+        )
+
     def cambiar_estado(self, nuevo_estado, empleado, observacion=''):
         if nuevo_estado == self.estado:
             raise ValueError(
@@ -203,6 +260,13 @@ class Encomienda(models.Model):
             observacion=observacion
         )
 
+        # ── Notificar vía WebSocket ────────────────────
+        self._notificar_cambio_estado(
+            estado_anterior,
+            nuevo_estado,
+            empleado
+        )
+
         return self
 
     # ========================
@@ -223,9 +287,15 @@ class Encomienda(models.Model):
         import uuid
         from datetime import timedelta
 
-        codigo = f'ENC-{timezone.now().strftime("%Y%m%d")}-{str(uuid.uuid4())[:6].upper()}'
+        codigo = (
+            f'ENC-{timezone.now().strftime("%Y%m%d")}-'
+            f'{str(uuid.uuid4())[:6].upper()}'
+        )
 
-        fecha_est = timezone.now().date() + timedelta(days=ruta.dias_entrega)
+        fecha_est = (
+            timezone.now().date() +
+            timedelta(days=ruta.dias_entrega)
+        )
 
         encomienda = cls(
             codigo=codigo,
@@ -250,16 +320,27 @@ class Encomienda(models.Model):
 # ========================
 
 class HistorialEstado(models.Model):
+
     encomienda = models.ForeignKey(
         Encomienda,
         on_delete=models.CASCADE,
         related_name='historial'
     )
 
-    estado_anterior = models.CharField(max_length=2, choices=EstadoEnvio.choices)
-    estado_nuevo = models.CharField(max_length=2, choices=EstadoEnvio.choices)
+    estado_anterior = models.CharField(
+        max_length=2,
+        choices=EstadoEnvio.choices
+    )
 
-    observacion = models.TextField(blank=True, null=True)
+    estado_nuevo = models.CharField(
+        max_length=2,
+        choices=EstadoEnvio.choices
+    )
+
+    observacion = models.TextField(
+        blank=True,
+        null=True
+    )
 
     empleado = models.ForeignKey(
         Empleado,
@@ -267,7 +348,12 @@ class HistorialEstado(models.Model):
         related_name='cambios_estado'
     )
 
-    fecha_cambio = models.DateTimeField(auto_now_add=True)
+    fecha_cambio = models.DateTimeField(
+        auto_now_add=True
+    )
 
     def __str__(self):
-        return f'{self.encomienda.codigo}: {self.estado_anterior} → {self.estado_nuevo}'
+        return (
+            f'{self.encomienda.codigo}: '
+            f'{self.estado_anterior} → {self.estado_nuevo}'
+        )

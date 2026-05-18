@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
 from envios import views_auth
 
@@ -46,9 +47,17 @@ urlpatterns = [
     # =========================
     path('api/<version>/schema/', SpectacularAPIView.as_view(), name='schema'),
 
-    path('api/<version>/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path(
+        'api/<version>/docs/',
+        SpectacularSwaggerView.as_view(url='/api/v1/schema/'),
+        name='swagger-ui'
+    ),
 
-    path('api/<version>/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path(
+        'api/<version>/redoc/',
+        SpectacularRedocView.as_view(url='/api/v1/schema/'),
+        name='redoc'
+    ),
 
     # =========================
     # APP PRINCIPAL
@@ -74,10 +83,7 @@ if settings.DEBUG:
 # =========================
 
 if settings.DEBUG:
-    urlpatterns += static(
-        settings.STATIC_URL,
-        document_root=settings.STATIC_ROOT
-    )
+    urlpatterns += staticfiles_urlpatterns()
 
     urlpatterns += static(
         settings.MEDIA_URL,

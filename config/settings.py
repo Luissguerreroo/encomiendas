@@ -5,6 +5,8 @@ Django settings for config project.
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
+import os
+import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -39,9 +41,6 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
-# ─────────────────────────────
-# SILK (SOLO DESARROLLO)
-# ─────────────────────────────
 if DEBUG:
     INSTALLED_APPS += ['silk']
 
@@ -52,10 +51,8 @@ if DEBUG:
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
 
-    # SILK (SOLO DESARROLLO)
     *(['silk.middleware.SilkyMiddleware'] if DEBUG else []),
 
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -92,15 +89,22 @@ TEMPLATES = [
 
 
 # ========================
+# LOCALIZACIÓN
+# ========================
+
+LANGUAGE_CODE = 'es'
+TIME_ZONE = 'America/Lima'
+
+USE_I18N = True
+USE_TZ = True
+
+
+# ========================
 # STATIC Y MEDIA
 # ========================
 
 STATIC_URL = 'static/'
-
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
-
+STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
@@ -108,10 +112,11 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # ========================
-# WSGI
+# WSGI / ASGI
 # ========================
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # ========================
@@ -131,47 +136,60 @@ DATABASES = {
 
 
 # ========================
-# PASSWORDS
+# CHANNEL LAYERS (REDIS - VERSION AVANZADA)
 # ========================
 
-AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
-]
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+
+            # ── Conexion ────────────────────────────────────────────
+            'hosts': [REDIS_URL],
+
+            # ── Identificacion ──────────────────────────────────────
+            'prefix': 'encomiendas',
+
+            # ── Mensajes ────────────────────────────────────────────
+            'expiry': 60,
+            'capacity': 100,
+
+            # ── Capacidad por tipo de canal ─────────────────────────
+            'channel_capacity': {
+                'ws.connect.*': 200,
+                'http.request': 200,
+            },
+
+            # ── Grupos ──────────────────────────────────────────────
+            'group_expiry': 86400,
+
+            # ── Seguridad (opcional) ────────────────────────────────
+            # 'symmetric_encryption_keys': [os.environ.get('REDIS_SECRET')],
+        },
+    },
+}
+
+# ========================
+# CHANNEL LAYERS (TESTING)
+# ========================
+
+if 'test' in sys.argv or 'pytest' in sys.modules:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 
 
 # ========================
-# INTERNACIONALIZACIÓN
-# ========================
-
-LANGUAGE_CODE = 'es-pe'
-TIME_ZONE = 'America/Lima'
-
-USE_I18N = True
-USE_TZ = True
-
-
-# ========================
-# DEFAULT PK
-# ========================
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-# ========================
-# AUTENTICACIÓN
+# AUTH / SESSIONS
 # ========================
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
-
-
-# ========================
-# SESIONES
-# ========================
 
 SESSION_COOKIE_AGE = 60 * 60 * 8
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
@@ -179,40 +197,17 @@ SESSION_COOKIE_NAME = 'encomiendas_session'
 
 
 # ========================
-# DJANGO REST FRAMEWORK
+# REST FRAMEWORK
 # ========================
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 15,
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
-    ],
-    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
-    'ALLOWED_VERSIONS': ['v1', 'v2'],
-    'DEFAULT_VERSION': 'v1',
-    'VERSION_PARAM': 'version',
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '20/hour',
-        'user': '500/hour',
-        'empleado': '100/min',
-        'cambio_estado': '30/hour',
-        'login_attempt': '5/min',
-    },
-    'EXCEPTION_HANDLER': 'api.exceptions.encomiendas_exception_handler',
 }
 
 
@@ -223,8 +218,6 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
 
@@ -234,78 +227,9 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-CORS_ALLOWED_ORIGINS = [
-    'https://encomiendas-frontend.vercel.app',
-    'https://admin.encomiendas.pe',
-    'http://localhost:3000',
-    'http://localhost:5173',
-]
-
-CORS_ALLOW_CREDENTIALS = True
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'authorization',
-    'content-type',
-    'x-csrftoken',
-    'x-requested-with',
-]
-
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
-
 
 # ========================
-# DRF SPECTACULAR
+# DEFAULT PK
 # ========================
 
-SPECTACULAR_SETTINGS = {
-    'TITLE': 'API Sistema de Gestión de Encomiendas',
-    'DESCRIPTION': '''
-API REST para gestionar el ciclo de vida de encomiendas.
-Incluye registro de envíos, cambio de estado, historial y estadísticas del sistema.
-''',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
-    'COMPONENT_SPLIT_REQUEST': True,
-    'SORT_OPERATIONS': False,
-    'TAGS': [
-        {'name': 'Encomiendas', 'description': 'Gestión de envíos'},
-        {'name': 'Clientes', 'description': 'Listado de clientes activos'},
-        {'name': 'Rutas', 'description': 'Rutas disponibles'},
-        {'name': 'Auth', 'description': 'Autenticación JWT'},
-    ],
-}
-
-
-# ========================
-# SILK PROFILER
-# ========================
-
-if DEBUG:
-    SILKY_PYTHON_PROFILER = True
-    SILKY_META = True
-    SILKY_INTERCEPT_PERCENT = 100
-
-
-# ========================
-# REDIS CACHE
-# ========================
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://redis:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
-    }
-}
-
-CACHE_TTL = 60 * 15  # 15 minutos
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

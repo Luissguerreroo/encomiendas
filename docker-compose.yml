@@ -3,13 +3,15 @@ version: '3.9'
 services:
   web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/1
     depends_on:
       - db
       - redis
@@ -30,6 +32,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4

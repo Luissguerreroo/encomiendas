@@ -2,8 +2,11 @@ from django.shortcuts import render, redirect, get_object_or_404, get_list_or_40
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.core.paginator import Paginator
+from django.conf import settings
+
+import redis
 
 from .models import Encomienda, Empleado, HistorialEstado
 from clientes.models import Cliente
@@ -153,3 +156,81 @@ def encomienda_cambiar_estado(request, pk):
             messages.error(request, str(e))
 
     return redirect('encomienda_detalle', pk=pk)
+
+
+# ── HEALTH CHECK (SISTEMA) ───────────────────────────────────
+def health_check(request):
+    """
+    GET /health/
+    Verifica PostgreSQL, Redis y Channels.
+    """
+
+    estado = {
+        'postgres': False,
+        'redis': False,
+        'channels': False,
+    }
+
+    # ── PostgreSQL ─────────────────────────────
+    try:
+        from django.db import connection
+        connection.ensure_connection()
+        estado['postgres'] = True
+    except Exception as e:
+        estado['postgres_error'] = str(e)
+
+    # ── Redis ──────────────────────────────────
+    try:
+        r = redis.from_url(
+            settings.REDIS_URL,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+        r.ping()
+
+        info = r.info()
+        estado['redis'] = True
+        estado['redis_memoria'] = info.get('used_memory_human')
+        estado['redis_clientes'] = info.get('connected_clients')
+        estado['redis_version'] = info.get('redis_version')
+
+    except Exception as e:
+        estado['redis_error'] = str(e)
+
+    # ── Channels ───────────────────────────────
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+
+        cl = get_channel_layer()
+
+        async_to_sync(cl.group_send)(
+            'health_check',
+            {'type': 'health.ping'}
+        )
+
+        estado['channels'] = True
+
+    except Exception as e:
+        estado['channels_error'] = str(e)
+
+    # ── Usuarios conectados ────────────────────
+    try:
+        r = redis.from_url(settings.REDIS_URL)
+        estado['empleados_conectados'] = r.scard(
+            'encomiendas:group:encomiendas_global'
+        )
+    except Exception:
+        estado['empleados_conectados'] = None
+
+    # ── Estado final ───────────────────────────
+    todo_ok = all([
+        estado['postgres'],
+        estado['redis'],
+        estado['channels']
+    ])
+
+    return JsonResponse(
+        estado,
+        status=200 if todo_ok else 503
+    )

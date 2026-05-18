@@ -5,34 +5,52 @@
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="h3">
-        <i class="fas fa-boxes me-2"></i>Encomiendas
-    </h2>
+
+    <div class="d-flex align-items-center gap-3">
+
+        <h2 class="h3 mb-0">
+            <i class="fas fa-boxes me-2"></i>Encomiendas
+        </h2>
+
+        <span id="ws-badge" class="badge bg-secondary">
+            Conectando...
+        </span>
+
+    </div>
+
     <a href="{% url 'encomienda_crear' %}" class="btn btn-primary">
         <i class="fas fa-plus me-1"></i>Nueva
     </a>
+
 </div>
 
 {# Formulario de búsqueda y filtros #}
 <form method="get" class="row g-2 mb-3">
+
     <div class="col-md-6">
-        <input 
-            type="text" 
-            name="q" 
+        <input
+            type="text"
+            name="q"
             value="{{ request.GET.q }}"
-            class="form-control" 
+            class="form-control"
             placeholder="Buscar por código o cliente..."
         >
     </div>
 
     <div class="col-md-4">
         <select name="estado" class="form-select">
+
             <option value="">Todos los estados</option>
+
             {% for valor, etiqueta in estados %}
-                <option value="{{ valor }}" {% if estado_activo == valor %}selected{% endif %}>
+                <option
+                    value="{{ valor }}"
+                    {% if estado_activo == valor %}selected{% endif %}
+                >
                     {{ etiqueta }}
                 </option>
             {% endfor %}
+
         </select>
     </div>
 
@@ -41,12 +59,16 @@
             Filtrar
         </button>
     </div>
+
 </form>
 
 {# Tabla de encomiendas #}
 <div class="card shadow">
+
     <div class="card-body p-0">
+
         <table class="table table-hover mb-0">
+
             <thead>
                 <tr>
                     <th>Código</th>
@@ -57,41 +79,257 @@
                     <th></th>
                 </tr>
             </thead>
+
             <tbody>
+
                 {% for enc in encomiendas %}
+
                 <tr>
-                    <td><code>{{ enc.codigo }}</code></td>
-                    <td>{{ enc.remitente.nombre_completo }}</td>
-                    <td>{{ enc.ruta.origen }} → {{ enc.ruta.destino }}</td>
+
+                    <td>
+                        <code>{{ enc.codigo }}</code>
+                    </td>
+
+                    <td>
+                        {{ enc.remitente.nombre_completo }}
+                    </td>
+
+                    <td>
+                        {{ enc.ruta.origen }} → {{ enc.ruta.destino }}
+                    </td>
+
                     <td>
                         <span class="badge-estado badge-{{ enc.estado }}">
                             {{ enc.get_estado_display }}
                         </span>
                     </td>
-                    <td>{{ enc.fecha_registro|date:'d/m/Y' }}</td>
+
                     <td>
-                        <a href="{% url 'encomienda_detalle' enc.pk %}" 
-                           class="btn btn-sm btn-outline-primary">
+                        {{ enc.fecha_registro|date:'d/m/Y' }}
+                    </td>
+
+                    <td>
+                        <a
+                            href="{% url 'encomienda_detalle' enc.pk %}"
+                            class="btn btn-sm btn-outline-primary"
+                        >
                             Ver
                         </a>
                     </td>
+
                 </tr>
+
                 {% empty %}
+
                 <tr>
                     <td colspan="6" class="text-center py-4">
                         No se encontraron encomiendas
                     </td>
                 </tr>
+
                 {% endfor %}
+
             </tbody>
+
         </table>
+
     </div>
 
-    {# Paginación usando partial reutilizable #}
+    {# Paginación #}
     <div class="card-footer bg-white">
         {% include 'partials/paginacion.html' with page_obj=encomiendas %}
     </div>
 
 </div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+
+<script>
+
+class EncomiendaWebSocket {
+
+    constructor(url) {
+
+        this.url = url;
+        this.ws = null;
+
+        this.intentos = 0;
+        this.maxIntentos = 10;
+        this.baseDelay = 1000;
+    }
+
+    conectar() {
+
+        // Evitar conexiones duplicadas
+        if (this.ws?.readyState === WebSocket.OPEN) {
+            return;
+        }
+
+        this.ws = new WebSocket(this.url);
+
+        // =====================================
+        // CONEXIÓN EXITOSA
+        // =====================================
+        this.ws.onopen = () => {
+
+            console.log('WebSocket conectado');
+
+            this.intentos = 0;
+
+            const badge = document.getElementById('ws-badge');
+
+            if (badge) {
+
+                badge.textContent = 'EN VIVO';
+                badge.className = 'badge bg-success';
+            }
+        };
+
+        // =====================================
+        // MENSAJES RECIBIDOS
+        // =====================================
+        this.ws.onmessage = (event) => {
+
+            const data = JSON.parse(event.data);
+
+            console.log('Mensaje recibido:', data);
+
+            this.onMensaje(data);
+        };
+
+        // =====================================
+        // CIERRE DE CONEXIÓN
+        // =====================================
+        this.ws.onclose = (event) => {
+
+            console.log('WebSocket cerrado:', event.code);
+
+            const badge = document.getElementById('ws-badge');
+
+            if (badge) {
+
+                badge.textContent = 'Reconectando...';
+                badge.className = 'badge bg-warning';
+            }
+
+            // Usuario no autenticado
+            if (event.code === 4001) {
+
+                window.location.href = '/login/';
+                return;
+            }
+
+            // Cierre normal
+            if (event.code === 1000) {
+                return;
+            }
+
+            // Backoff exponencial
+            const delay = Math.min(
+                this.baseDelay * Math.pow(2, this.intentos),
+                30000
+            );
+
+            this.intentos++;
+
+            if (this.intentos <= this.maxIntentos) {
+
+                console.log(
+                    `Reconectando en ${delay / 1000}s`
+                );
+
+                setTimeout(() => {
+                    this.conectar();
+                }, delay);
+
+            } else {
+
+                if (badge) {
+
+                    badge.textContent = 'Desconectado';
+                    badge.className = 'badge bg-danger';
+                }
+            }
+        };
+
+        // =====================================
+        // ERRORES
+        // =====================================
+        this.ws.onerror = (error) => {
+
+            console.error('Error WebSocket:', error);
+        };
+    }
+
+    // =====================================
+    // MANEJO PERSONALIZADO DE MENSAJES
+    // =====================================
+    onMensaje(data) {
+
+        console.log(data);
+    }
+
+    // =====================================
+    // ENVIAR MENSAJES
+    // =====================================
+    enviar(data) {
+
+        if (this.ws?.readyState === WebSocket.OPEN) {
+
+            this.ws.send(JSON.stringify(data));
+        }
+    }
+
+    // =====================================
+    // DESCONECTAR
+    // =====================================
+    desconectar() {
+
+        this.intentos = this.maxIntentos + 1;
+
+        this.ws?.close(1000, 'Desconexión manual');
+    }
+}
+
+
+// =========================================
+// INICIAR WEBSOCKET
+// =========================================
+
+const wsEnc = new EncomiendaWebSocket(
+    'ws://' + window.location.host + '/ws/encomiendas/'
+);
+
+
+// =========================================
+// MANEJO DE MENSAJES
+// =========================================
+
+wsEnc.onMensaje = (data) => {
+
+    // Cambio de estado
+    if (data.tipo === 'estado_cambio') {
+
+        console.log('Estado actualizado:', data);
+    }
+
+    // Estadísticas
+    if (data.tipo === 'stats') {
+
+        console.log('Stats:', data.stats);
+    }
+};
+
+
+// =========================================
+// CONECTAR
+// =========================================
+
+wsEnc.conectar();
+
+</script>
 
 {% endblock %}

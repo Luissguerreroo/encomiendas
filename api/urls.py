@@ -40,7 +40,7 @@ urlpatterns = [
 
     path(
         'docs/',
-        SpectacularSwaggerView.as_view(url_name='schema'),
+        SpectacularSwaggerView.as_view(url='/api/v1/schema/'),
         name='swagger',
     ),
 
